@@ -1,0 +1,98 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  build-windows:
+    name: Build tokensmith for Windows
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Set up Go environment
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # Change to match your go.mod version if needed
+
+      # 3. Cache Go modules for faster builds
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      # 4. Download dependencies
+      - name: Download dependencies
+        run: go mod download
+
+      # 5. Tidy modules (optional but recommended)
+      - name: Tidy modules
+        run: go mod tidy
+
+      # 6. Build the Windows EXE
+      - name: Build Windows EXE
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: go build -ldflags="-s -w" -o tokensmith.exe main.go
+
+      # 7. Upload the EXE as a build artifact (downloadable from GitHub Actions UI)
+      - name: Upload Windows EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tokensmith-windows-amd64
+          path: tokensmith.exe
+          retention-days: 30
+
+  # Optional: Create a GitHub Release with the EXE when you push a version tag
+  release:
+    name: Release Windows EXE
+    runs-on: ubuntu-latest
+    needs: build-windows
+    if: startsWith(github.ref, 'refs/tags/v') # Only runs on version tags like v1.0.0
+
+    permissions:
+      contents: write # Required to create releases
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build Windows EXE for release
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: go build -ldflags="-s -w" -o tokensmith.exe main.go
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: tokensmith.exe
+          generate_release_notes: true
